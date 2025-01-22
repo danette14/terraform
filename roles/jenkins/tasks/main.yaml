@@ -1,0 +1,95 @@
+---
+  - name: Install Docker
+    apt:
+      name: docker.io
+      state: present
+
+   
+  - name: Create /var/jenkins_home
+    file:
+      name: /var/jenkins_home
+      state: directory
+      mode: '0755'
+
+  - name: Create directory for pipeline
+    file:
+      path: /var/jenkins_home/jobs/test_pipeline
+      state: directory
+      mode: '0755'
+      recurse: yes
+ 
+  
+  - name: Set directory Permissions
+    shell: chown -R 1000:1000 /var/jenkins_home
+
+  
+  - name: Create directory for docker build
+    file:
+      path: /docker
+      state: directory
+      mode: '0755'
+
+  - name: Copy docker file for image building
+    copy:
+      src: ./Dockerfile
+      dest: /docker 
+      mode: '0755'
+  
+  - name: Copy the plugins file list for jenkins-cli
+    copy:
+      src: ./plugins.txt
+      dest: /docker
+      mode: '0755' 
+  
+  - name: Copy the casc file for jenkins configuration
+    copy:
+      src: ./casc.yaml
+      dest: /var/jenkins_home
+      mode: '0755'
+
+  
+
+  - name: Copy the config.xml file for jenkins pipeline
+    copy:
+      src: ./config.xml
+      dest: /var/jenkins_home/jobs/test_pipeline
+      mode: '0755'
+ 
+  
+  - name: Build the custom Jenkins Docker image
+    community.docker.docker_image:
+      name: custom-jenkins
+      tag: latest
+      source: build
+      build:
+        path: /docker
+      state: present
+
+  - name: Start Jenkins container
+    community.docker.docker_container:
+      name: jenkins
+      image: custom-jenkins
+      state: started
+      ports:
+        - "8080:8080"
+      volumes:
+        - "/var/jenkins_home:/var/jenkins_home"
+      restart_policy: unless-stopped
+
+  - name: Wait for Jenkins to be fully configured
+    uri:
+      url: "http://{{ jenkins_ip_global }}:8080/api/json"
+      method: GET
+      user: "admin"
+      password: "admin"
+      force_basic_auth: yes  
+      validate_certs: no     
+      status_code: 200
+      return_content: yes    
+    register: jenkins_api_response
+    retries: 30
+    delay: 20
+    until: jenkins_api_response.status == 200 and jenkins_api_response.json is defined and jenkins_api_response.json.mode == "NORMAL"
+    ignore_errors: yes       
+
+  

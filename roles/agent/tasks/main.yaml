@@ -1,0 +1,89 @@
+---
+  - name: Install java
+    apt:
+      name: openjdk-17-jdk
+      state: present
+
+  - name: Create Jenkins agent directory
+    file:
+      path: /var/jenkins_home
+      state: directory
+      mode: '0755'
+      owner: 1000   
+      group: 1000
+
+  - name: set variable for instance purpose
+    set_fact:
+      instance_purpose: "{{ hostvars[inventory_hostname].tags['Name'] | default('unknown') }}"
+
+  - name: Display the url
+    debug:
+      msg: "http://{{ jenkins_dns }}:8080/computer/{{ instance_purpose }}/jenkins-agent.jnlp"
+ 
+
+
+  - name: Get token for agent
+    uri:
+      url: "http://{{ jenkins_dns }}:8080/computer/{{ instance_purpose }}/jenkins-agent.jnlp"
+      method: GET
+      user: "admin"
+      password: "admin"
+      force_basic_auth: yes
+      validate_certs: no
+      status_code: [200, 201]
+      return_content: yes
+    register:  jnlp_file
+    no_log: true
+
+  - name: Extract token from JNLP file
+    set_fact:
+      agent_token: "{{ jnlp_file.content | regex_search('<application-desc><argument>([a-z0-9]*)</argument>', '\\1') }}"
+
+  - name: Download Jenkins agent JAR
+    get_url:
+      url: "http://{{ jenkins_dns }}:8080/jnlpJars/agent.jar"
+      dest: /var/jenkins_home/agent.jar
+      mode: '0755'
+      owner: 1000
+      group: 1000
+
+  - name: Display the token
+    debug:
+      msg: "Extracted token: {{ agent_token[0]}}"
+
+  - name: Create systemd service file
+    copy:
+      dest: /etc/systemd/system/jenkins-agent.service
+      content: |
+        [Unit]
+        Description=Jenkins Agent
+        After=network.target
+        
+        [Service]
+        Type=simple
+        User=root
+        WorkingDirectory=/var/jenkins_home/
+        ExecStart=/usr/bin/java -jar /var/jenkins_home/agent.jar \
+            -url http://{{ jenkins_dns }}:8080/ \
+            -secret {{ agent_token[0] }} \
+            -name {{ instance_purpose }} \
+            -webSocket \
+            -workDir /var/jenkins_home/
+        
+        Restart=always
+        RestartSec=10
+        StartLimitInterval=0
+        
+        [Install]
+        WantedBy=multi-user.target
+      mode: '0644'
+    notify: Restart Jenkins Agent
+
+
+  - name: Start and enable Jenkins agent service
+    systemd:
+      name: jenkins-agent
+      state: started
+      enabled: yes
+      daemon_reload: yes
+
