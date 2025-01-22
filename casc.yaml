@@ -1,0 +1,40 @@
+jenkins:
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "admin"
+  
+  authorizationStrategy:
+    globalMatrix:
+      permissions:
+        - "Overall/Administer:admin"
+  
+  numExecutors: 0
+
+  nodes:
+    - permanent:
+        name: "docker-agent"
+        labelString: "docker"
+        numExecutors: 1
+        remoteFS: "/home/jenkins"
+        launcher:
+          inbound:
+            workDirSettings:
+              disabled: false
+              failIfWorkDirIsMissing: false
+              internalDir: "remoting"
+    
+    - permanent:
+        name: "ansible-agent"
+        labelString: "ansible"
+        numExecutors: 1
+        remoteFS: "/home/jenkins"
+        launcher:
+          inbound:
+            workDirSettings:
+              disabled: false
+              failIfWorkDirIsMissing: false
+              internalDir: "remoting"
+

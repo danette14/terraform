@@ -1,0 +1,32 @@
+- hosts: all
+  become: yes
+  roles:
+    - common_server
+
+               
+- hosts: ec2_jenkins
+  become: yes
+  vars:
+    jenkins_ip_global: "{{ ansible_facts['default_ipv4']['address'] }}"  
+  roles:
+    - jenkins
+
+- hosts: ec2_docker_agent
+  become: yes
+  tasks:
+    - name: Install Docker
+      apt:
+        name: docker.io
+        state: present
+
+- hosts: "ec2_*_agent"
+  become: yes
+  vars:
+    jenkins_dns: "{{ groups['ec2_jenkins'][0] }}"
+  roles:
+    - agent
+  handlers:
+    - name: Restart Jenkins Agent
+      systemd:
+        name: jenkins-agent
+        state: restarted
